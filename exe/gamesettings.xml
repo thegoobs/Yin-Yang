@@ -1,0 +1,103 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Settings for Ned's Turkey Farm -->
+
+<settings>
+
+  <!-- general settings -->
+
+  <game name="Yin Yang" />
+  
+  <!-- renderer settings -->
+
+  <renderer width="1024" height="768" shadermodel="5_0"/>
+
+  <!-- initial game settings -->
+  
+  <ninja health="3" score="0" damage="1"/>
+  
+  <!-- image file names -->
+
+    <images>
+      <image src="Images\HUD.png" />
+      <image src="Images\healthUnit.png" />
+      <image src="Images\detection.png" />
+      <image src="Images\platformW.png" />
+      <image src="Images\platformB.png" />
+      <image src="Images\platformBLW.png" />
+      <image src="Images\platformBRW.png" />
+      <image src="Images\platformWLB.png" />
+      <image src="Images\platformWRB.png" />
+      <image src="Images\jumpL.png" />
+      <image src="Images\jumpR.png" />
+      <image src="Images\pauseMenu.png" />
+      <image src="Images\ninja_left_large.png" />
+      <image src="Images\ninja_right_large.png" />
+      <image src="Images\ph_enemy.png" />
+      <image src="Images\projectile.png" />
+      <image src="Images\floor.png" />
+      <image src="Images\black.png" />
+      <image src="Images\enemyProjectile.png" />
+      <image src="Images\exclamation.png" />
+      <image src="Images\lose.png" />
+      <image src="Images\wave_complete.png" />
+      <image src="Images\TitleScreen.png" />
+      <image src="Images\font\num0.png" />
+      <image src="Images\font\num1.png" />
+      <image src="Images\font\num2.png" />
+      <image src="Images\font\num3.png" />
+      <image src="Images\font\num4.png" />
+      <image src="Images\font\num5.png" />
+      <image src="Images\font\num6.png" />
+      <image src="Images\font\num7.png" />
+      <image src="Images\font\num8.png" />
+      <image src="Images\font\num9.png" />
+      <image src="Images\coin.png" />
+      <image src="Images\pause.png" />
+      <image src="Images\RunAnim\runL1.png"/>
+      <image src="Images\RunAnim\runL2.png"/>
+      <image src="Images\RunAnim\runL3.png"/>
+      <image src="Images\RunAnim\runR1.png"/>
+      <image src="Images\RunAnim\runR2.png"/>
+      <image src="Images\RunAnim\runR3.png"/>
+      <image src="Images\HowTo.png"/>
+      <image src="Images\ground_enemy.png"/>
+      <image src="Images\hide.png"/>
+    </images>
+
+  <!-- backgrounds -->
+  <backgrounds>
+    <background src="Images\BG\background1.png"/>
+    <background src="Images\BG\background1.png"/>
+    <background src="Images\BG\background2.png" />
+    <background src="Images\BG\background3.png" />
+    <background src="Images\BG\background4.png" />
+    <background src="Images\BG\background5.png" />
+    <background src="Images\BG\background6.png" />
+    <background src="Images\BG\background7.png" />
+  </backgrounds>
+
+  <!-- sounds -->
+  <sounds>
+    <sound file="Sounds\jump.wav" instances="4"/>
+    <sound file="Sounds\throw.wav" instances="4"/>
+    <sound file="Sounds\projectile_hit_enemy.wav" instances="5"/>
+    <sound file="Sounds\detected.wav" instances="5"/>
+    <sound file="Sounds\title.wav" instances="1"/>
+    <sound file="Sounds\enemy_shoot.wav" instances="5" />
+    <sound file="Sounds\coin.wav" instances="4" />
+    <sound file="Sounds\ninja_hit.wav" instances="1" />
+    <sound file="Sounds\projectile_hit_platform.wav" instances="3" />
+    <sound file="Sounds\bg_sound.wav" instances="1" />
+    <sound file="Sounds\enemy_death.wav" instances="1" />
+    <sound file="Sounds\death.wav" instances="1" />
+  </sounds>
+  
+  <!-- debugger settings -->
+
+    <debug linenumber="1" header="1">
+      <file select="1" name="debug.txt"/>
+      <debugger select="1"/>
+      <ip select="1" address="127.0.0.1" port="1617"/>
+    </debug>
+
+</settings>

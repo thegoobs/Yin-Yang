@@ -1,0 +1,501 @@
+/// \file gamerenderer.cpp
+/// \brief Direct3D rendering tasks for the game.
+/// DirectX stuff that won't change much is hidden away in this file
+/// so you won't have to keep looking at it.
+
+#include <algorithm>
+
+#include "gamerenderer.h"
+#include "defines.h" 
+#include "abort.h"
+#include "imagefilenamelist.h"
+#include "debug.h"
+#include "sprite.h"
+#include "object.h"
+#include "Enemy.h"
+#include "Random.h"
+#include "Ninja.h"
+#include "Coins.h"
+#include "Number.h"
+#include "Sound.h"
+#include "Projectile.h"
+
+extern int g_nScreenWidth;
+extern int g_nScreenHeight;
+extern int g_nBackground;
+extern BOOL g_bWireFrame;
+extern CSoundManager *g_pSoundManager;
+extern CImageFileNameList g_cImageFileName;
+extern CTimer g_cTimer;
+extern CRandom g_cRandom;
+extern BOOL g_bNinjaHit;
+//game state stuff
+extern GameState g_eGameState;
+extern C3DSprite *g_pLoseSprite;
+extern int g_nLoseYPos;
+extern C3DSprite *g_pWaveCompleteSprite;
+extern BOOL g_bPlatform[][64];
+//Ninja sprites and object file
+extern C3DSprite* g_pNinjaLSprite;
+extern C3DSprite* g_pNinjaRSprite;
+extern C3DSprite* g_pNinjaJumpLS;
+extern C3DSprite* g_pNinjaJumpRS;
+extern C3DSprite* g_pNinjaRunL1;
+extern C3DSprite* g_pNinjaRunL2;
+extern C3DSprite* g_pNinjaRunL3;
+extern C3DSprite* g_pNinjaRunR1;
+extern C3DSprite* g_pNinjaRunR2;
+extern C3DSprite* g_pNinjaRunR3;
+extern CNinja* g_pNinja; 
+extern C3DSprite* g_pProjectileSprite;
+extern vector<CProjectile*> g_pNinjaProjectile;
+extern int g_nProjInd;
+extern C3DSprite* g_pEnemyASprite;
+extern C3DSprite* g_pEnemyBSprite;
+//Enemies sprite and object files
+extern int g_pEnemyCtr;
+extern vector<CEnemyObject*> g_pEnemies;
+extern vector<CGameObject*> g_pProjectiles;
+extern int g_nNumberOfEnemies;
+extern int g_nTimeSinceLastSpawn;
+//HUD stuff
+extern C3DSprite* g_pHUDSprite;
+extern C3DSprite* g_pHealthBarSprite;
+extern C3DSprite* g_pTitleSprite;
+extern C3DSprite* g_pHowToPlaySprite;
+extern int g_nWave;
+extern int g_nScore;
+extern CFont* g_cFontManager;
+extern BOOL g_bPause;
+extern C3DSprite* g_pPauseSprite;
+extern C3DSprite* g_pPauseMenuSprite;
+
+//Coin Manager
+extern CCoinManager* g_cCoinManager;
+
+//Shaders
+extern ColorScheme g_eTheme;
+extern BOOL g_bInversion;
+extern ColorScheme GetPair();
+
+//Addition for Lab 4: Add declarations
+extern C3DSprite* g_pPlatformSpriteW;
+extern C3DSprite* g_pPlatformSpriteB;
+extern C3DSprite* g_pPlatformSpriteBLW; // diagonals
+extern C3DSprite* g_pPlatformSpriteBRW;
+extern C3DSprite* g_pPlatformSpriteWLB;
+extern C3DSprite* g_pPlatformSpriteWRB;
+
+extern C3DSprite* g_pBackground1;
+extern C3DSprite* g_pBackground2;
+extern C3DSprite* g_pBackground3;
+extern C3DSprite* g_pBackground4;
+extern C3DSprite* g_pBackground5;
+extern C3DSprite* g_pBackground6;
+extern C3DSprite* g_pBackground7;
+extern BOOL g_bLevelSwap;
+
+extern void DrawPlatforms();
+extern void LoadPlatforms();
+extern void SetLevel();
+extern void ReloadLevel(bool platforms);
+
+CGameRenderer::CGameRenderer(): m_bCameraDefaultMode(TRUE){
+} //constructor
+
+
+/// Initialize the vertex and constant buffers for the background, that is, the
+/// ground and the sky.
+
+void CGameRenderer::InitBackground(){
+  HRESULT hr;
+
+  //load vertex buffer
+  float w = g_nScreenWidth;
+  float h = g_nScreenHeight;
+  
+  //vertex information, first triangle in clockwise order
+  BILLBOARDVERTEX pVertexBufferData[6]; 
+  pVertexBufferData[0].p = Vector3(1.5*w, 0, 0);
+  pVertexBufferData[0].tu = 1.0f; pVertexBufferData[0].tv = 0.0f;
+
+  pVertexBufferData[1].p = Vector3(0.5*w, 0, 0);
+  pVertexBufferData[1].tu = 0.0f; pVertexBufferData[1].tv = 0.0f;
+
+  pVertexBufferData[2].p = Vector3(1.5*w, 0, 1500);
+  pVertexBufferData[2].tu = 1.0f; pVertexBufferData[2].tv = 1.0f;
+
+  pVertexBufferData[3].p = Vector3(0.5*w, 0, 1500);
+  pVertexBufferData[3].tu = 0.0f; pVertexBufferData[3].tv = 1.0f;
+
+  pVertexBufferData[4].p = Vector3(1.5*w, h, 1500);
+  pVertexBufferData[4].tu = 1.0f; pVertexBufferData[4].tv = 0.0f;
+
+  pVertexBufferData[5].p = Vector3(0.5*w, h, 1500);
+  pVertexBufferData[5].tu = 0.0f; pVertexBufferData[5].tv = 0.0f;
+  
+  //create vertex buffer for background
+  m_pShader = new CShader(2, NUM_SHADERS);
+    
+  m_pShader->AddInputElementDesc(0, DXGI_FORMAT_R32G32B32_FLOAT, "POSITION");
+  m_pShader->AddInputElementDesc(12, DXGI_FORMAT_R32G32_FLOAT,  "TEXCOORD");
+  m_pShader->VSCreateAndCompile(L"VertexShader.hlsl", "main");
+  m_pShader->PSCreateAndCompile(L"Hud.hlsl", "main", HIT);
+  m_pShader->PSCreateAndCompile(L"Yin.hlsl", "main", YIN);
+  m_pShader->PSCreateAndCompile(L"Yang.hlsl", "main", YANG);
+  m_pShader->PSCreateAndCompile(L"Lan.hlsl", "main", LAN);
+  m_pShader->PSCreateAndCompile(L"Chengzi.hlsl", "main", CHENGZI);
+  m_pShader->PSCreateAndCompile(L"Hong.hlsl", "main", HONG);
+  m_pShader->PSCreateAndCompile(L"Luse.hlsl", "main", LUSE);
+  m_pShader->PSCreateAndCompile(L"Huangse.hlsl", "main", HUANGSE);
+  m_pShader->PSCreateAndCompile(L"Zise.hlsl", "main", ZISE);
+
+  // Create constant buffers.
+  D3D11_BUFFER_DESC constantBufferDesc = { 0 };
+  constantBufferDesc.ByteWidth = sizeof(ConstantBuffer);
+  constantBufferDesc.Usage = D3D11_USAGE_DEFAULT;
+  constantBufferDesc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+  constantBufferDesc.CPUAccessFlags = 0;
+  constantBufferDesc.MiscFlags = 0;
+  constantBufferDesc.StructureByteStride = 0;
+    
+  m_pDev2->CreateBuffer(&constantBufferDesc, nullptr, &m_pConstantBuffer);
+    
+  D3D11_BUFFER_DESC VertexBufferDesc;
+  VertexBufferDesc.Usage = D3D11_USAGE_DEFAULT;
+  VertexBufferDesc.ByteWidth = sizeof(BILLBOARDVERTEX)* 6;
+  VertexBufferDesc.BindFlags = D3D11_BIND_VERTEX_BUFFER;
+  VertexBufferDesc.CPUAccessFlags = 0;
+  VertexBufferDesc.MiscFlags = 0;
+  VertexBufferDesc.StructureByteStride = 0;
+    
+  D3D11_SUBRESOURCE_DATA subresourceData;
+  subresourceData.pSysMem = pVertexBufferData;
+  subresourceData.SysMemPitch = 0;
+  subresourceData.SysMemSlicePitch = 0;
+    
+  hr = m_pDev2->CreateBuffer(&VertexBufferDesc, &subresourceData, &m_pBackgroundVB);
+} //InitBackground
+
+/// Draw the game background.
+
+void CGameRenderer::DrawBackground(){
+  int world_color = g_eTheme;
+
+  UINT nVertexBufferOffset = 0;
+  
+  UINT nVertexBufferStride = sizeof(BILLBOARDVERTEX);
+  m_pDC2->IASetVertexBuffers(0, 1, &m_pBackgroundVB, &nVertexBufferStride, &nVertexBufferOffset);
+  m_pDC2->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP);
+  // oh golly I hope this works
+  if (g_bInversion)
+  {
+	  world_color = GetPair();
+  }
+  m_pShader->SetShaders(world_color);
+
+  //draw floor
+  if(g_bWireFrame)
+    m_pDC2->PSSetShaderResources(0, 1, &m_pWireframeTexture); //set wireframe texture
+  else
+    m_pDC2->PSSetShaderResources(0, 1, &m_pFloorTexture); //set floor texture
+  
+  SetWorldMatrix();
+  
+  ConstantBuffer constantBufferData; ///< Constant buffer data for shader.
+
+  constantBufferData.wvp = CalculateWorldViewProjectionMatrix();
+  m_pDC2->UpdateSubresource(m_pConstantBuffer, 0, nullptr, &constantBufferData, 0, 0);
+  m_pDC2->VSSetConstantBuffers(0, 1, &m_pConstantBuffer);
+  m_pDC2->Draw(4, 0);
+
+  //draw backdrop
+  if(!g_bWireFrame)
+    m_pDC2->PSSetShaderResources(0, 1, &m_pWallTexture);
+
+  constantBufferData.wvp = CalculateWorldViewProjectionMatrix();
+  m_pDC2->UpdateSubresource(m_pConstantBuffer, 0, nullptr, &constantBufferData, 0, 0);
+  m_pDC2->VSSetConstantBuffers(0, 1, &m_pConstantBuffer);
+  m_pDC2->Draw(4, 2);
+} //DrawBackground
+ 
+/// Load the background and sprite textures.
+
+void CGameRenderer::LoadTextures(){ 
+  LoadTexture(m_pWallTexture, g_cImageFileName[3]);
+  LoadTexture(m_pFloorTexture, g_cImageFileName[16]);
+  LoadTexture(m_pWireframeTexture, g_cImageFileName[17]); //black for wireframe
+} //LoadTextures
+
+/// All textures used in the game are released - the release function is kind
+/// of like a destructor for DirectX entities, which are COM objects.
+
+void CGameRenderer::Release(){ 
+  g_pNinjaLSprite->Release();
+  g_pNinjaRSprite->Release();
+  g_pNinjaJumpLS->Release();
+  g_pNinjaJumpRS->Release();
+  g_pNinjaRunL1->Release();
+  g_pNinjaRunL2->Release();
+  g_pNinjaRunL3->Release();
+  g_pNinjaRunR1->Release();
+  g_pNinjaRunR2->Release();
+  g_pNinjaRunR3->Release();
+  g_pProjectileSprite->Release();
+  g_pEnemyASprite->Release();
+  g_pPlatformSpriteW->Release();
+  g_pPlatformSpriteB->Release();
+  g_pPlatformSpriteBLW->Release();
+  g_pPlatformSpriteBRW->Release();
+  g_pPlatformSpriteWLB->Release();
+  g_pPlatformSpriteWRB->Release();
+  g_pBackground1->Release();
+  g_pBackground2->Release();
+  g_pBackground3->Release();
+  g_pBackground4->Release();
+  g_pBackground5->Release();
+  g_pBackground6->Release();
+  g_pBackground7->Release();
+
+  SAFE_RELEASE(m_pWallTexture);
+  SAFE_RELEASE(m_pFloorTexture);
+  SAFE_RELEASE(m_pWireframeTexture);
+  SAFE_RELEASE(m_pBackgroundVB);
+
+  SAFE_DELETE(m_pShader);
+  
+  CRenderer::Release();
+} //Release
+
+/// Move all objects, then draw them.
+/// \return TRUE if it succeeded
+
+void CGameRenderer::ComposeFrame(){
+	int world_color = g_eTheme;
+
+	if (g_bInversion) // if the world is inverted
+	{
+		world_color = GetPair();
+	}
+
+	//do things if has ninja has health
+	if (g_pNinja->m_nHealth > 0) {
+		g_pNinja->setVelocity();
+		//g_pNinja->changeSprite();
+		g_pNinja->move(); //move ninja
+		for (int c = 0; c < MAXPROJ; c++) {
+		  if (g_pNinjaProjectile[c] != nullptr)
+			g_pNinjaProjectile[c]->move();
+		}//for
+	}//if
+  //prepare to draw
+  m_pDC2->OMSetRenderTargets(1, &m_pRTV, m_pDSV);
+  float clearColor[] = { 1.0f, 1.0f, 1.0f, 0.0f };
+  m_pDC2->ClearRenderTargetView(m_pRTV, clearColor);
+  m_pDC2->ClearDepthStencilView(m_pDSV, D3D11_CLEAR_DEPTH | D3D11_CLEAR_STENCIL, 1.0f, 0);
+
+  //draw
+  if (g_eGameState != TITLE_SCREEN && g_eGameState != HOW_TO_PLAY) {
+	  g_pSoundManager->stop(4); //stop the title screen sound
+	  DrawBackground(); //draw background 
+	  DrawPlatforms();
+	  
+	  switch (g_nBackground)
+	  {
+		case 1:
+			g_pBackground1->Draw(Vector3(g_nScreenWidth/2, g_nScreenHeight/2, 1000.0f), world_color);
+			break;
+
+		case 2:
+			g_pBackground2->Draw(Vector3(g_nScreenWidth / 2, g_nScreenHeight / 2, 1000.0f), world_color);
+			break;
+
+		case 3:
+			g_pBackground3->Draw(Vector3(g_nScreenWidth / 2, g_nScreenHeight / 2, 1000.0f), world_color);
+			break;
+
+		case 4:
+			g_pBackground4->Draw(Vector3(g_nScreenWidth / 2, g_nScreenHeight / 2, 1000.0f), world_color);
+			break;
+
+		case 5:
+			g_pBackground5->Draw(Vector3(g_nScreenWidth / 2, g_nScreenHeight / 2, 1000.0f), world_color);
+			break;
+
+		case 6:
+			g_pBackground6->Draw(Vector3(g_nScreenWidth / 2, g_nScreenHeight / 2, 1000.0f), world_color);
+			break;
+
+		case 7:
+			g_pBackground7->Draw(Vector3(g_nScreenWidth / 2, g_nScreenHeight / 2, 1000.0f), world_color);
+			break;
+	  }
+
+
+      if (g_bNinjaHit && g_cTimer.elapsed(g_pNinja->m_nLastHitTime, 1000))
+		g_bNinjaHit = FALSE;
+	  g_pNinja->draw(); //draw ninja
+
+	  //coin stuff
+	  g_cCoinManager->load(); //coin stuff
+	  g_cCoinManager->checkCollision(g_pNinja->m_vPos);
+
+    //HUD display: Draw the Score, Health, & Health Bars
+    g_pHUDSprite->Draw(Vector3(512.0f, g_nScreenHeight - 38.0f, 250.0f));
+    //Health
+    for (int i = 0; i < g_pNinja->getHealth(); i++) {
+      g_pHealthBarSprite->Draw(Vector3(143 + (20 * i), 748, 249.0f));
+    }
+
+    //draw projectiles
+    for (int c = 0; c < MAXPROJ; c++) {
+      if (g_pNinjaProjectile[c] != nullptr) {
+        g_pNinjaProjectile[c]->draw();
+        if (g_pNinjaProjectile[c]->m_bDestroyed) {
+          g_pNinjaProjectile[c]->Reset();
+          g_pNinjaProjectile[c]->m_bDestroyed = false;
+        }//if
+      }//if
+
+      int x;
+      int y;
+      if (g_pNinjaProjectile[c]->m_vVel.x < 0)
+        x = (int)g_pNinjaProjectile[c]->m_vPos.x - 5; //add a bit of buffer
+      else
+        x = (int)g_pNinjaProjectile[c]->m_vPos.x + 5;
+      if (g_pNinjaProjectile[c]->m_vVel.y < 0)
+        y = (int)g_pNinjaProjectile[c]->m_vPos.y - 5;
+      else
+        y = (int)g_pNinjaProjectile[c]->m_vPos.y + 5;
+      x = x / 16;
+      y = y / 16 + 1;
+
+	  if (g_bPlatform[PLAT_HT - y][x]) {
+		  g_pNinjaProjectile[c]->setVel(Vector3(0.0f, 0.0f, 0.0f));
+		  if (!g_pNinjaProjectile[c]->m_bIsStuck) {
+			  g_pNinjaProjectile[c]->m_bIsStuck = TRUE;
+			  g_pNinjaProjectile[c]->m_nStuck = g_cTimer.time();
+			  g_pSoundManager->play(8);
+		  }//if
+		  else {
+			  if (g_cTimer.elapsed(g_pNinjaProjectile[c]->m_nStuck, 2000)) {
+				  g_pNinjaProjectile[c]->Reset();
+				  g_pNinjaProjectile[c]->m_bIsStuck = FALSE;
+			  }//if
+		  }//else
+	  }//if
+
+	  else if (g_pNinjaProjectile[c]->m_bIsStuck) {
+		  if (g_cTimer.elapsed(g_pNinjaProjectile[c]->m_nStuck, 2000)) {
+			  g_pNinjaProjectile[c]->Reset();
+			  g_pNinjaProjectile[c]->m_bIsStuck = FALSE;
+		  }//if
+	  }
+    }//for
+
+	  //draw enemies
+	  for (auto i = g_pEnemies.begin(); i != g_pEnemies.end();) {
+		  CEnemyObject *enemy = *i;
+		  enemy->move(); //move enemy
+		  enemy->draw(); //draw enemy
+		  enemy->hitDetection(g_pNinja);
+		  //check if the projectile is close
+		  if (enemy->checkDestruction()) {
+			  g_pEnemies.erase(i); //erase the thing
+			  g_nTimeSinceLastSpawn = g_cTimer.time();
+			  g_nScore += 100;//increment the score
+			  g_pSoundManager->play(10);
+		  }
+		  else i++;
+	  }
+
+	  //check if enemies vector is empty
+	  //draw the wave complete image
+	  g_pWaveCompleteSprite->Draw(Vector3(g_nScreenWidth / 2.0f, g_nLoseYPos, 251));
+	  if (g_pEnemies.empty()) {
+		  if (g_nLoseYPos > g_nScreenHeight - 85) g_nLoseYPos--; //make the wave comeplete image slide from HUD
+		  if (!g_bLevelSwap && g_cTimer.elapsed(g_nTimeSinceLastSpawn, 3500)) {
+			  ReloadLevel(true); // reload the level
+			  g_cCoinManager->init(10);
+			  g_bLevelSwap = TRUE;
+		  }
+		  //draw HIDE! on top of ninja so players know to get hidden for next wave
+		  if (g_bLevelSwap && g_pNinja->m_pHideSprite) {
+			  Vector3 v = g_pNinja->m_vPos;
+			  v.y += 64.0f;
+			  g_pNinja->m_pHideSprite->Draw(v);
+		  }//if
+		  if (g_bLevelSwap && g_cTimer.elapsed(g_nTimeSinceLastSpawn, 2000)) {
+			  for (int i = 0; i < g_nNumberOfEnemies + 1; i++) { //loop and push back enemies in random locations
+				  g_pEnemyCtr--;
+				  CEnemyObject *temp;
+				  g_cRandom.number(1, 100) > 40 ?
+					  temp = new CEnemyObject(Vector3(g_cRandom.number(120, 900), g_cRandom.number(100, 650), g_pEnemyCtr), g_pEnemyASprite, 3, ENEMY_AIR) :
+					  temp = new CEnemyObject(Vector3(g_cRandom.number(120, 900), g_cRandom.number(100, 650), g_pEnemyCtr), g_pEnemyBSprite, 3, ENEMY_GROUND);
+				  g_pEnemies.push_back(temp);
+			  }//for
+			  g_nWave++; //increment wave #
+			  g_nNumberOfEnemies++; //increment number of enemies
+			  g_bLevelSwap = FALSE;
+		  }
+	  }
+
+	  else g_nLoseYPos > g_nScreenHeight ? g_nLoseYPos : g_nLoseYPos++; //go back up
+
+	  //draw enemy projectiles
+	  for (auto i = g_pProjectiles.begin(); i != g_pProjectiles.end();) {
+		  CGameObject *projectile = *i;
+		  projectile->move();
+		  projectile->draw();
+		  projectile->hitDetection(g_pNinja); //hit detection for each projectile thrown
+		  if (projectile->m_bDestroyed) g_pProjectiles.erase(i);
+		  else i++; //increment
+	  }
+
+	  //Score & wave
+	  g_cFontManager->drawScore(g_nScore);
+	  g_cFontManager->drawWave(g_nWave);
+	  //pause button
+	  g_pPauseSprite->Draw(Vector3(g_nScreenWidth - 24.0f, g_nScreenHeight - 100.0f, 800));
+	  //draw pause menu if applicable
+	  if (g_eGameState == PAUSE) {
+		  g_pPauseMenuSprite->Draw(Vector3(g_nScreenWidth / 2.0f, g_nScreenHeight / 2.0f, 250));
+	  }
+	  //check if ninja has run out of health
+	  if (g_pNinja->m_nHealth <= 0) {
+		  g_pNinja->m_pSprite = g_pNinja->m_vSprites[STANDING_LEFT];
+		  //end the game
+		  g_eGameState = LOSE;
+		  g_pLoseSprite->Draw(Vector3(g_nScreenWidth / 2.0f, g_nScreenHeight / 2.0f, 250));
+	  }//if
+  }//if
+
+  else if (g_eGameState == TITLE_SCREEN) {
+	  g_pTitleSprite->Draw(Vector3(g_nScreenWidth / 2.0f, g_nScreenHeight / 2.0f, 1)); //draw the title screen at start
+	  g_pSoundManager->play(4);//play a start sound
+  }//else
+
+  else if (g_eGameState == HOW_TO_PLAY) {
+	  g_pHowToPlaySprite->Draw(Vector3(g_nScreenWidth / 2.0f, g_nScreenHeight / 2.0f, 1)); //draw the title screen at start
+  }//else
+
+  
+} //ComposeFrame
+ 
+/// Compose a frame of animation and present it to the video card.
+
+void CGameRenderer::ProcessFrame(){
+  ComposeFrame(); //compose a frame of animation
+  m_pSwapChain2->Present(0, 0); //present it
+} //ProcessFrame
+
+/// Toggle between eagle-eye camera (camera pulled back far enough to see
+/// backdrop) and the normal game camera.
+
+void CGameRenderer::FlipCameraMode(){
+  m_bCameraDefaultMode = !m_bCameraDefaultMode; 
+  
+  if(m_bCameraDefaultMode)
+    SetViewMatrix(Vector3(1024, 384, -350), Vector3(1024, 384, 1000));
+  else SetViewMatrix(Vector3(1024, 600, -2000), Vector3(1024, 600, 1000));
+} //FlipCameraMode

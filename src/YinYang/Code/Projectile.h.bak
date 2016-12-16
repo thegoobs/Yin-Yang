@@ -1,0 +1,15 @@
+#pragma once
+#include "defines.h"
+#include "sprite.h"
+#include "Object.h"
+
+
+class CProjectile : public CGameObject {
+	friend class CGameObject;
+
+	public:
+		CProjectile() : CGameObject(PROJECTILE, Vector3(0, 0, 0), Vector3(0, 0, 0), nullptr) {};
+		CProjectile(Vector3 s) : CGameObject(PROJECTILE, s, Vector3(0, 0, 0), nullptr) {};
+		CProjectile(Vector3 s, Vector3 v) : CGameObject(PROJECTILE, s, v, nullptr) {};
+		CProjectile(Vector3 s, Vector3 v, C3DSprite *sprite) : CGameObject(PROJECTILE, s, v, sprite) {}; //constructors
+};

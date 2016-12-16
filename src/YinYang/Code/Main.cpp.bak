@@ -1,0 +1,870 @@
+/// \file main.cpp 
+/// \Main file for Yin Yang, game by Bryan Adams, Guthrie Schoolar, and Cassidy Susa
+
+/// \mainpage Yin Yang: Stealth and ninjas
+///
+/// Now we see our first simple real-time animation. A plane moves from
+/// right to left across the background. The plane is represented by
+/// an instance of the class CGameObject, which is an abstraction
+/// of a game object including physical properties such as location
+/// and speed, and a pointer to its image, which is an instance of
+/// the class C3DSprite (the term <em>sprite</em> means a small image 
+/// to be pasted in the correct place in the overall scene).
+///
+/// The executable file for this app now has an icon of a red plane
+/// instead of the default Windows icon.
+
+#include <windows.h>
+#include <windowsx.h>
+
+#include "Box2D\Box2D.h"
+#include "SpriteFont.h"
+
+#include "Defines.h"
+#include "abort.h"
+#include "gamerenderer.h"
+#include "imagefilenamelist.h"
+#include "debug.h"
+#include "timer.h"
+#include "sprite.h"
+#include "Number.h"
+#include "object.h"
+#include "Projectile.h"
+#include "Enemy.h"
+#include "Random.h"
+#include "Sound.h"
+#include "Ninja.h"
+#include "Coins.h"
+
+//globals
+BOOL g_bActiveApp;  ///< TRUE if this is the active application
+HWND g_HwndApp; ///< Application window handle.
+HINSTANCE g_hInstance; ///< Application instance handle.
+char g_szGameName[256]; ///< Name of this game
+char g_szShaderModel[256]; ///< The shader model version used
+CImageFileNameList g_cImageFileName; ///< List of image file names.
+CImageFileNameList g_cBackgroundFileName; // for the bgs
+CFont *g_cFontManager; //manages the numbers
+CTimer g_cTimer; ///< The game timer.
+CRandom g_cRandom; //Random thingy
+GameState g_eGameState = TITLE_SCREEN; //gameStates enum to determine what to do
+CSoundManager *g_pSoundManager;
+ColorScheme g_eTheme = YIN; // theme of the game, color of the ninja
+BOOL g_bInversion = false; // determines whether or not to invert the platforms and background
+BOOL themechanged = false; // ooh
+
+//Cursor globals
+POINT g_lpCursorPos;
+Vector3 g_vCursorPos;
+
+//ninja stuff
+C3DSprite* g_pNinjaLSprite = nullptr; ///< Pointer to the plane sprite.
+C3DSprite* g_pNinjaRSprite = nullptr; ///< Pointer to the plane sprite.
+C3DSprite* g_pNinjaJumpLS = nullptr; ///< Pointer to the plane sprite.
+C3DSprite* g_pNinjaJumpRS = nullptr; ///< Pointer to the plane sprite.
+//ninja animation sprites
+C3DSprite* g_pNinjaRunL1 = nullptr;
+C3DSprite* g_pNinjaRunL2 = nullptr;
+C3DSprite* g_pNinjaRunL3 = nullptr;
+C3DSprite* g_pNinjaRunR1 = nullptr;
+C3DSprite* g_pNinjaRunR2 = nullptr;
+C3DSprite* g_pNinjaRunR3 = nullptr;
+
+CNinja* g_pNinja = nullptr; ///< Pointer to the plane object.
+Vector3 ninjaPos;
+Vector3 ninjaVel;
+BOOL g_bFrictionCheck; //true = do stuff, false = nah fam
+
+//projectiles vector for enemy
+vector<CGameObject*> g_pProjectiles;
+vector<CProjectile*> g_pProjectile;
+int g_nProjInd = 0; //prjectile index
+
+//Enemies stuff
+int g_pEnemyCtr = 500; //counts number of push backs
+vector<CEnemyObject*> g_pEnemies; //vector containing the baddies
+int g_nNumberOfEnemies = 2;
+int g_nTimeSinceLastSpawn = 0;
+// platforms first
+C3DSprite* g_pPlatformSpriteW = nullptr; //This global has nullptr because D3 files have not been set yet
+C3DSprite* g_pPlatformSpriteB = nullptr; // black platform
+C3DSprite* g_pPlatformSpriteBLW = nullptr; // diagonals
+C3DSprite* g_pPlatformSpriteBRW = nullptr;
+C3DSprite* g_pPlatformSpriteWLB = nullptr;
+C3DSprite* g_pPlatformSpriteWRB = nullptr;
+
+// BACKGROUNDS
+C3DSprite* g_pBackground1 = nullptr;
+C3DSprite* g_pBackground2 = nullptr;
+C3DSprite* g_pBackground3 = nullptr;
+
+// then all the other images
+C3DSprite* g_pProjectileSprite = nullptr;
+C3DSprite* g_pEnemyProjectileSprite = nullptr;
+
+//HUD stuff
+C3DSprite* g_pTitleSprite = nullptr;
+C3DSprite* g_pDetectedSprite = nullptr;
+C3DSprite* g_pHUDSprite = nullptr;
+C3DSprite* g_pHealthSprite = nullptr;
+C3DSprite* g_pHealthBarSprite = nullptr;
+C3DSprite* g_pLoseSprite = nullptr;
+C3DSprite* g_pPauseSprite = nullptr;
+C3DSprite* g_pPauseMenuSprite = nullptr;
+int g_nLoseYPos = 0;
+int g_nWave = 1;
+C3DSprite* g_pWaveCompleteSprite = nullptr;
+int g_nHealth;
+int g_nScore = 0;
+BOOL g_bPause = TRUE;
+
+//Coins
+CCoinManager* g_cCoinManager;
+
+C3DSprite* g_pEnemyASprite = nullptr; // enemy sprite pointer
+C3DSprite* g_pExclamationPoint = nullptr;
+
+const float PLAT_XOFFSET = 8.0f; //Gets rid of line not drawn on right side
+const float PLAT_BLOCKSIZE = 16.0f; //16x16 blocks
+const float HALF_PLAT_BLOCKSIZE = PLAT_BLOCKSIZE / 2.0f;
+const float NINJA_HT = 64.0f; //height of player
+const float HALF_NINJA_HT = NINJA_HT / 2.0f;
+
+BOOL g_bCoinGrid[PLAT_HT][PLAT_WIDTH]; //coin grid
+BOOL g_bPlatform[PLAT_HT][PLAT_WIDTH]; // whether or not there is a platform
+char g_nBGColors[PLAT_HT][PLAT_WIDTH]; // what color the bg is at a certain location
+
+//graphics settings
+int g_nScreenWidth; ///< Screen width.
+int g_nScreenHeight; ///< Screen height.
+BOOL g_bWireFrame = FALSE; ///< TRUE for wireframe rendering.
+
+
+// Stage Settings
+int g_nBackground = 1; // numeric representation of background
+string g_sBackground = "background1.txt"; // string for the filename
+int g_nPlatforms = 1; // numerical representation of platforms sorta'
+string g_sPlatforms = "platforms1.txt" ; // string for platforms
+
+//XML settings
+tinyxml2::XMLDocument g_xmlDocument; ///< TinyXML document for settings.
+XMLElement* g_xmlSettings = nullptr; ///< TinyXML element for settings tag.
+
+//debug variables
+#ifdef DEBUG_ON
+  CDebugManager g_cDebugManager; ///< The debug manager.
+#endif //DEBUG_ON
+
+CGameRenderer GameRenderer; ///< The game renderer.
+//functions in Window.cpp
+void InitGraphics();
+
+// this function will return the pair shader of the current shader
+ColorScheme GetPair()
+{
+	switch (g_eTheme)
+	{
+	case YIN:
+		return YANG;
+		break;
+	case YANG:
+		return YIN;
+		break;
+	case LAN:
+		return CHENGZI;
+		break;
+	case CHENGZI:
+		return LAN;
+		break;
+	case HONG:
+		return LUSE;
+		break;
+	case LUSE:
+		return HONG;
+		break;
+	case HUANGSE:
+		return ZISE;
+		break;
+	case ZISE:
+		return HUANGSE;
+		break;
+	}
+}
+
+void SetLevel(bool platforms)
+{
+	int l_nNewBg;
+
+  // determine whether or not to invert the world; 1 = inverted, 0 = normal
+  g_bInversion = (g_cRandom.number(0,1) == 1);
+
+  // the backgrounds start at index 9, the second number is the index of the final background
+  l_nNewBg = g_cRandom.number(1, 3);
+  while(l_nNewBg == g_nBackground)
+  {
+	  l_nNewBg = g_cRandom.number(1, 3);
+  }
+
+  g_nBackground = l_nNewBg;
+
+  switch (g_nBackground)
+  {
+  case 1: // background 1
+    g_sBackground = "background1.txt";
+    break;
+
+  case 2:
+    g_sBackground = "background2.txt";
+    break;
+
+  case 3:
+    g_sBackground = "background3.txt";
+    break;
+  }
+  
+  // reload platforms if the bool is true
+  if (platforms)
+  {
+	  g_nPlatforms = g_cRandom.number(1, 2);
+
+	  switch (g_nPlatforms)
+	  {
+	  case 1:
+		  g_sPlatforms = "platforms1.txt";
+		  break;
+
+	  case 2:
+		  g_sPlatforms = "platforms1.txt";
+		  break;
+
+	  case 3:
+		  g_sPlatforms = "platforms1.txt";
+		  break;
+		}
+  }
+}
+
+//Addition for Lab 4: All these platforming functions!
+void LoadPlatforms(){
+	FILE* bgfile;
+	fopen_s(&bgfile, g_sBackground.c_str(), "rt");
+	if (bgfile) // load the data into an array
+	{
+	}
+	else
+	{
+		ABORT("Bg data not loaded!");
+	}
+
+	FILE* platfile;
+	fopen_s(&platfile, "platforms1.txt", "rt");
+	if (platfile){
+		for (int i = 0; i<PLAT_HT; i++){
+			for (int j = 0; j < PLAT_WIDTH; j++)
+			{
+				g_bPlatform[i][j] = fgetc(platfile) == 'X';
+				g_nBGColors[i][j] = fgetc(bgfile); // fill the colors array
+			}
+			fgetc(platfile); //eoln
+			fgetc(bgfile);
+		} //for
+		fclose(platfile);
+	} //if
+	else
+	{
+		ABORT("Platform file platforms.txt not found.");
+	}
+
+	fclose(bgfile); // close the bg data file
+
+} //LoadPlatforms
+
+void DrawPlatforms(){
+	int world_color = g_eTheme;
+
+	if (g_bInversion) // if the world is inverted
+	{
+		world_color = GetPair();
+	}
+
+	float y = g_nScreenHeight - HALF_PLAT_BLOCKSIZE;
+	for (int i = 0; i<PLAT_HT; i++){
+		float x = PLAT_XOFFSET;
+		for (int j = 0; j<PLAT_WIDTH; j++){
+			if (g_bPlatform[i][j]) // if a platform should be drawn, draw a platform
+			{
+				switch (g_nBGColors[i][j])
+				{
+					case 'W': // if the background is white
+						g_pPlatformSpriteB->Draw(Vector3(x, y, 801.0f), world_color); // draw a black square
+						break;
+
+					case 'B': // if the background is black
+						g_pPlatformSpriteW->Draw(Vector3(x, y, 801.0f), world_color ); // draw a white square
+						break;
+
+					// the following cases are for diagonals
+					case '\\': /* upper black, bottom white \ BLW */
+						g_pPlatformSpriteWLB->Draw(Vector3(x, y, 801.0f), world_color );
+						break;
+
+					case '/': // upper black, bottom white / BRW
+						g_pPlatformSpriteWRB->Draw(Vector3(x, y, 801.0f), world_color);
+						break;
+
+					case '>': /* upper white, bottom black \ WLB */
+						g_pPlatformSpriteBLW->Draw(Vector3(x, y, 801.0f), world_color);
+						break;
+
+					case '<': // upper white, bottom black WRB /
+						g_pPlatformSpriteBRW->Draw(Vector3(x, y, 801.0f), world_color);
+						break;
+				}
+			}
+			x += PLAT_BLOCKSIZE;
+		} //for
+		y -= PLAT_BLOCKSIZE;
+	} //for
+} //DrawPlatforms
+
+void ReloadLevel(bool platforms)
+{
+	SetLevel(platforms); // repick the platforms and backgrounds
+	LoadPlatforms();
+	DrawPlatforms();
+	for (int i = 0; i < MAXPROJ; i++) {
+		g_pProjectile[i]->Reset();
+	}
+	// do more?
+}
+
+BOOL inRange(const int index, const int limit){
+	return index >= 0 && index < limit;
+} //inRange
+
+BOOL isOnPlatformOrGround(float x, float& y){
+	int i = int(round((g_nScreenHeight + HALF_NINJA_HT - y) / PLAT_BLOCKSIZE));
+	int j = int(round((x - PLAT_XOFFSET) / PLAT_BLOCKSIZE));
+
+	//on a platform 
+	if (inRange(j, PLAT_WIDTH) && inRange(i, PLAT_HT) && g_bPlatform[i][j]){
+		y = round(y / PLAT_BLOCKSIZE)*PLAT_BLOCKSIZE; //correct height 
+		return TRUE;
+	} //if
+
+	//on the ground or underneath it
+	else if (y <= HALF_NINJA_HT){
+		y = HALF_NINJA_HT; //correct height
+		return TRUE;
+	} //else if
+
+	else return FALSE;
+} //isOnPlatformOrGround
+
+BOOL isUnderPlatform(float x, float& y){
+	int i = int(round((g_nScreenHeight - HALF_NINJA_HT - y) / PLAT_BLOCKSIZE));
+	int j = int(round((x - PLAT_XOFFSET) / PLAT_BLOCKSIZE));
+
+	//on a platform 
+	if (inRange(j, PLAT_WIDTH) && inRange(i, PLAT_HT) && g_bPlatform[i][j]){
+		y = round(y / PLAT_BLOCKSIZE)*PLAT_BLOCKSIZE; //correct height 
+		return TRUE;
+	} //if
+
+	else return FALSE;
+} //isUnderPlatform
+
+HWND CreateDefaultWindow(char* name, HINSTANCE hInstance, int nCmdShow);
+
+/// \brief Initialize XML settings.
+///
+/// Open an XML file and prepare to read settings from it. Settings
+/// tag is loaded to XML element g_xmlSettings for later processing. Abort if it
+/// cannot load the file or cannot find settings tag in loaded file.
+
+void InitXMLSettings(){
+  //open and load XML file
+  const char* xmlFileName = "gamesettings.xml"; //Settings file name.
+  if(g_xmlDocument.LoadFile(xmlFileName) != 0)
+    ABORT("Cannot load settings file %s.", xmlFileName);
+
+  //get settings tag
+  g_xmlSettings = g_xmlDocument.FirstChildElement("settings"); //settings tag
+  if(g_xmlSettings == nullptr) //abort if tag not found
+    ABORT("Cannot find <settings> tag in %s.", xmlFileName);
+} //InitXMLSettings
+
+/// \brief Load game settings.
+///
+/// Load and parse game settings from a TinyXML element g_xmlSettings.
+
+void LoadGameSettings(){
+  if(!g_xmlSettings)return; //bail and fail
+
+  //get game name
+  XMLElement* ist = g_xmlSettings->FirstChildElement("game"); 
+  if(ist){
+    size_t len = strlen(ist->Attribute("name")); //length of name string
+    strncpy_s(g_szGameName, len+1, ist->Attribute("name"), len); 
+  } //if
+
+  //get renderer settings
+  XMLElement* renderSettings = 
+    g_xmlSettings->FirstChildElement("renderer"); //renderer tag
+  if(renderSettings){ //read renderer tag attributes
+    g_nScreenWidth = renderSettings->IntAttribute("width");
+    g_nScreenHeight = renderSettings->IntAttribute("height");
+	g_nLoseYPos = g_nScreenHeight;
+
+    size_t len = strlen(renderSettings->Attribute("shadermodel")); //length shader model string
+    strncpy_s(g_szShaderModel, len + 1, renderSettings->Attribute("shadermodel"), len);
+  } //if
+
+  //get character settings
+  XMLElement* characterSettings =
+	  g_xmlSettings->FirstChildElement("ninja"); //ninja tag
+  if (characterSettings) { //if it worked,
+	  g_nHealth = characterSettings->IntAttribute("health");
+  }
+  //get image file names
+  g_cImageFileName.GetImageFileNames(g_xmlSettings);
+  g_cBackgroundFileName.GetBGFileNames(g_xmlSettings);
+
+  //get debug settings
+  #ifdef DEBUG_ON
+    g_cDebugManager.GetDebugSettings(g_xmlSettings);
+  #endif //DEBUG_ON
+} //LoadGameSettings
+
+/// \brief Create game objects. 
+///
+/// Create a plane object, we'll add more objects in later demos.
+
+void CreateObjects(){  
+	g_bPause = FALSE;
+  int c = 0;
+	g_pNinja = new CNinja(NINJA, Vector3((float)g_nScreenWidth - 128.0f, 130.0f, 800),
+		Vector3(0.0f, 0, 0), g_pNinjaLSprite);
+  for (c = 0; c < MAXPROJ; c++)
+    g_pProjectile.push_back( new CProjectile(Vector3(g_nScreenWidth - 64.0f + 20 * c, g_nScreenHeight - 50.0f, 0.0f), Vector3(0.0f, 0.0f, 0.0f), g_pProjectileSprite));
+
+	g_pEnemyCtr--;
+	g_pEnemies.push_back(new CEnemyObject(Vector3((float)g_nScreenWidth / 2.0f - 150.0f, 375.0f, g_pEnemyCtr), g_pEnemyASprite, 3)); //big old initializer for a single enemy
+	g_pEnemyCtr--;
+	g_pEnemies.push_back(new CEnemyObject(Vector3((float)g_nScreenWidth / 4.0f - 150.0f, 250.0f, g_pEnemyCtr), g_pEnemyASprite, 3)); //big old initializer for a single enemy
+} //CreateObjects
+
+void resetGame() {
+//	ReloadLevel(true);
+	g_pNinja->setHealth(3); //reset ninja health
+	g_nScore = 0;
+	g_nWave = 1;
+	g_pNinja->setPos(Vector3((float)g_nScreenWidth - 128.0f, 130.0f, 800));
+	g_pEnemies.clear(); //clears the vector
+	
+	g_pEnemyCtr = 500; //reset z index counter
+	g_pEnemyCtr--;
+	g_pEnemies.push_back(new CEnemyObject(Vector3((float)g_nScreenWidth / 2.0f - 150.0f, 375.0f, g_pEnemyCtr), g_pEnemyASprite, 3)); //big old initializer for a single enemy
+	g_pEnemyCtr--;
+	g_pEnemies.push_back(new CEnemyObject(Vector3((float)g_nScreenWidth / 4.0f - 150.0f, 250.0f, g_pEnemyCtr), g_pEnemyASprite, 3)); //big old initializer for a single enemy
+
+	g_cCoinManager->init(10);
+	g_cCoinManager->init(10);
+	for (int c = 0; c < MAXPROJ; c++) {
+		g_pProjectile[c]->Reset(); //put projectiles back
+	}
+	g_nProjInd = 0; //set projectile index back to beginning
+} //resetGame
+/// \brief Keyboard handler.
+///
+/// Handler for keyboard messages from the Windows API. Takes the appropriate
+/// action when the user presses a key on the keyboard.
+/// \param keystroke Virtual key code for the key pressed
+/// \return TRUE if the game is to exit
+
+BOOL KeyboardHandler(WPARAM keystroke){ 
+  switch(keystroke){
+    case VK_ESCAPE: //exit game
+      return TRUE; //exit keyboard handler
+      break;
+
+    case VK_F1: //changes health bar
+		g_pNinja->changeHealth(-1);
+        break;
+
+    case VK_F2: //changes health bar
+      //g_bWireFrame = !g_bWireFrame;
+      //GameRenderer.SetWireFrameMode(g_bWireFrame);
+		g_pNinja->changeHealth(1);
+        break;
+
+	case VK_SPACE:
+	case VK_UP:
+	case 0x57: //W key
+		if (g_eGameState == GAME)
+			g_pNinja->jump();
+		break;
+
+	case VK_LEFT:
+		if ((g_eGameState == TITLE_SCREEN || g_eGameState == LOSE) && !themechanged)
+		{
+			if (g_eTheme == YIN)
+			{
+				g_eTheme = ZISE;
+			}
+			else
+			{
+				g_eTheme = static_cast<ColorScheme>(g_eTheme - 1);
+			}
+			themechanged = true;
+		}
+	case 0x41: //A key
+		/*ninjaVel = g_pNinja->getVel();
+		if (ninjaVel.x <= 0) {
+			//g_pNinja->setVel(Vector3(-10, 0, 0));
+			g_pNinja->changeSprite(keystroke);
+		}
+		else {
+			g_bFrictionCheck = TRUE;
+			DEBUGPRINTF("I wanna go left but I can't\n");
+		}*/
+		break;
+	case VK_RIGHT:
+		if ((g_eGameState == TITLE_SCREEN || g_eGameState == LOSE) && !themechanged)
+		{
+			if (g_eTheme == ZISE)
+			{
+				g_eTheme = YIN;
+			}
+			else
+			{
+				g_eTheme = static_cast<ColorScheme>(g_eTheme + 1);
+			}
+			themechanged = true;
+		}
+	case 0x44: //D key
+		/*ninjaVel = g_pNinja->getVel();
+		if (ninjaVel.x >= 0) {
+			//g_pNinja->setVel(Vector3(10, 0, 0));
+			g_pNinja->changeSprite(keystroke);
+		}
+		else {
+			g_bFrictionCheck = TRUE;
+		}*/
+		break;
+
+	case VK_DOWN:
+	case 0x53: //S key
+		if (g_eGameState == GAME) {
+			g_pNinja->dropDown(Vector3(0, -16, 0));
+			g_pNinja->setVel(Vector3(0, -16, 0)); //really janky jump down from platforms
+		}
+		break;
+
+	case VK_RETURN: //Enter key?
+		switch (g_eGameState) {
+			case LOSE:
+			case PAUSE:
+				resetGame();
+			case TITLE_SCREEN:
+				resetGame();
+				g_eGameState = GAME;
+				break;
+		}
+  } //switch
+
+  return FALSE; //normal exit
+} //KeyboardHandler
+
+/// \brief Window procedure.
+///
+/// Handler for messages from the Windows API. 
+/// \param hwnd Window handle
+/// \param message Message code
+/// \param wParam Parameter for message 
+/// \param lParam Second parameter for message
+/// \return 0 if message is handled
+
+LRESULT CALLBACK WindowProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam){
+  switch(message){ //handle message
+    case WM_ACTIVATEAPP: g_bActiveApp = (BOOL)wParam; break; //iconize
+
+	//Mouse Handler?
+	case WM_LBUTTONDOWN: //Left Mouse Button
+		//Do the shoot thing
+		POINT p;
+		if (GetCursorPos(&p)) { //screen coordinates
+			if (ScreenToClient(hwnd, &p)) { //window coordinates
+				g_vCursorPos = Vector3(p.x, g_nScreenHeight - p.y, 800); //height was inverted for some reason
+				Vector3 pauseBox = Vector3(g_nScreenWidth - 24.0f, g_nScreenHeight - 100.0f, 800);
+				pauseBox -= g_vCursorPos;
+				if (pauseBox.Length() <= 16.0f) {
+					g_bPause = !g_bPause; //flip the switchs
+					g_eGameState == PAUSE ? g_eGameState = GAME : g_eGameState = PAUSE;
+				}
+				else g_pNinja->shoot(g_vCursorPos);
+
+			}
+		}
+		break;
+
+    case WM_KEYDOWN: //keyboard hit
+	g_bFrictionCheck = FALSE;
+	  if (KeyboardHandler(wParam)) {
+			DestroyWindow(hwnd);
+	  }
+      break;
+
+	case WM_KEYUP:
+		if (g_eGameState == TITLE_SCREEN || g_eGameState == LOSE)
+		{
+			// this doesn't quite work
+			themechanged = false;
+		}
+		g_bFrictionCheck = TRUE;
+		KeyboardHandler(wParam);
+		break;
+
+    case WM_DESTROY: //on exit
+      GameRenderer.Release(); //release textures
+      delete g_pNinja; //delete the plane object
+      delete g_pNinjaLSprite; //delete the plane sprite
+	  delete g_pEnemyASprite;
+  	  delete g_pNinjaJumpLS;
+  	  delete g_pNinjaJumpRS;
+  	  delete g_pNinjaRunL1;
+  	  delete g_pNinjaRunL2;
+  	  delete g_pNinjaRunL3;
+  	  delete g_pNinjaRunR1;
+  	  delete g_pNinjaRunR2;
+  	  delete g_pNinjaRunR3;
+	  delete g_pPlatformSpriteW;
+	  delete g_pPlatformSpriteB;
+	  delete g_pPlatformSpriteBLW;
+	  delete g_pPlatformSpriteBRW;
+	  delete g_pPlatformSpriteWLB;
+	  delete g_pPlatformSpriteWRB;
+	  delete g_pProjectileSprite;
+	  delete g_pBackground1;
+	  delete g_pBackground2;
+	  delete g_pBackground3;
+
+      PostQuitMessage(0); //this is the last thing to do on exit
+      break;
+
+    default: //default window procedure
+      return DefWindowProc(hwnd, message, wParam, lParam);
+  } //switch(message)
+
+  return 0;
+} //WindowProc
+
+/// \brief Winmain.  
+///         
+/// Main entry point for this application. 
+/// \param hInst Handle to the current instance of this application.
+/// \param hPrevInst Handle to previous instance, deprecated.
+/// \param lpCmdLine Command line string, unused. 
+/// \param nShow Specifies how the window is to be shown.
+/// \return TRUE if application terminates correctly.
+
+int WINAPI WinMain(HINSTANCE hInst, HINSTANCE hPrevInst, LPSTR lpCmdLine, int nShow){
+  MSG msg; //current message
+  HWND hwnd; //handle to fullscreen window
+
+  #ifdef DEBUG_ON
+    g_cDebugManager.open(); //open debug streams, settings came from XML file
+  #endif //DEBUG_ON
+
+  g_hInstance = hInst;
+  g_cTimer.start(); //start game timer
+  InitXMLSettings(); //initialize XML settings reader
+  LoadGameSettings();
+
+  //create fullscreen window
+  hwnd = CreateDefaultWindow(g_szGameName, hInst, nShow);
+  if(!hwnd)return FALSE; //bail if problem creating window
+  g_HwndApp = hwnd; //save window handle
+  
+  InitGraphics(); //initialize graphics
+  //Sprite loading (Probably should be done in sprite manager later
+  g_pNinjaLSprite = new C3DSprite(); //make a sprite
+  g_pNinjaRSprite = new C3DSprite();
+  g_pNinjaJumpLS = new C3DSprite();
+  g_pNinjaJumpRS = new C3DSprite();
+  g_pNinjaRunL1 = new C3DSprite();
+  g_pNinjaRunL2 = new C3DSprite();
+  g_pNinjaRunL3 = new C3DSprite();
+  g_pNinjaRunR1 = new C3DSprite();
+  g_pNinjaRunR2 = new C3DSprite();
+  g_pNinjaRunR3 = new C3DSprite();
+  g_pEnemyASprite = new C3DSprite();
+  g_pExclamationPoint = new C3DSprite();
+  g_pProjectileSprite = new C3DSprite();
+  g_pEnemyProjectileSprite = new C3DSprite();
+  g_pDetectedSprite = new C3DSprite();
+  g_pHUDSprite = new C3DSprite();
+  g_pTitleSprite = new C3DSprite();
+  g_pHealthSprite = new C3DSprite();
+  g_pHealthBarSprite = new C3DSprite();
+  g_pLoseSprite = new C3DSprite();
+  g_pWaveCompleteSprite = new C3DSprite();
+  g_pPlatformSpriteW = new C3DSprite(); // make platform sprites
+  g_pPlatformSpriteB = new C3DSprite();
+  g_pPlatformSpriteBLW = new C3DSprite();
+  g_pPlatformSpriteBRW = new C3DSprite();
+  g_pPlatformSpriteWLB = new C3DSprite();
+  g_pPlatformSpriteWRB = new C3DSprite();
+  g_pPauseSprite = new C3DSprite();
+  g_pPauseMenuSprite = new C3DSprite();
+
+  g_pBackground1 = new C3DSprite();
+  g_pBackground2 = new C3DSprite();
+  g_pBackground3 = new C3DSprite();
+
+  SetLevel(true);
+
+  GameRenderer.LoadTextures(); //load images
+
+  if (!g_pNinjaLSprite->Load(g_cImageFileName[12])) //ninja sprite
+	  ABORT("Ninja image %s not found.", g_cImageFileName[12]);
+
+  if (!g_pNinjaRSprite->Load(g_cImageFileName[13])) //ninja sprite
+	  ABORT("Ninja image %s not found.", g_cImageFileName[13]);
+
+  if (!g_pNinjaJumpLS->Load(g_cImageFileName[9])) //ninja sprite
+	  ABORT("Ninja image %s not found.", g_cImageFileName[9]);
+
+  if (!g_pNinjaJumpRS->Load(g_cImageFileName[10])) //ninja sprite
+	  ABORT("Ninja image %s not found.", g_cImageFileName[10]);
+  // animations load
+  if (!g_pNinjaRunL1->Load(g_cImageFileName[35])) //ninja sprite
+	  ABORT("Ninja image %s not found.", g_cImageFileName[35]);
+
+  if (!g_pNinjaRunL2->Load(g_cImageFileName[36])) //ninja sprite
+	  ABORT("Ninja image %s not found.", g_cImageFileName[36]);
+
+  if (!g_pNinjaRunL3->Load(g_cImageFileName[37])) //ninja sprite
+	  ABORT("Ninja image %s not found.", g_cImageFileName[37]);
+
+  if (!g_pNinjaRunR1->Load(g_cImageFileName[38])) //ninja sprite
+	  ABORT("Ninja image %s not found.", g_cImageFileName[38]);
+
+  if (!g_pNinjaRunR2->Load(g_cImageFileName[39])) //ninja sprite
+	  ABORT("Ninja image %s not found.", g_cImageFileName[39]);
+
+  if (!g_pNinjaRunR3->Load(g_cImageFileName[40])) //ninja sprite
+	  ABORT("Ninja image %s not found.", g_cImageFileName[40]);
+
+  if (!g_pHUDSprite->Load(g_cImageFileName[0]))
+  {
+	  ABORT("HUD image %s not found!", g_cImageFileName[0]);
+  }
+
+  if (!g_pLoseSprite->Load(g_cImageFileName[20]))
+  {
+	  ABORT("HUD image %s not found!", g_cImageFileName[20]);
+  }
+
+  if (!g_pWaveCompleteSprite->Load(g_cImageFileName[21]))
+  {
+	  ABORT("HUD image %s not found!", g_cImageFileName[21]);
+  }
+
+  if (!g_pDetectedSprite->Load(g_cImageFileName[2]))
+  {
+	  ABORT("Enemy (A) image %s not found!", g_cImageFileName[2]);
+  }
+  if (!g_pEnemyASprite->Load(g_cImageFileName[14]))
+  {
+	  ABORT("Enemy (A) image %s not found!", g_cImageFileName[14]);
+  }
+
+  if (!g_pExclamationPoint->Load(g_cImageFileName[19]))
+  {
+	  ABORT("Enemy (A) image %s not found!", g_cImageFileName[19]);
+  }
+
+  if (!g_pProjectileSprite->Load(g_cImageFileName[15]))
+  {
+	  ABORT("Projectile image %s not found!", g_cImageFileName[15]);
+  }
+
+  if (!g_pHealthBarSprite->Load(g_cImageFileName[1]))
+  {
+	  ABORT("Projectile image %s not found!", g_cImageFileName[1]);
+  }
+
+  if (!g_pEnemyProjectileSprite->Load(g_cImageFileName[18]))
+  {
+	  ABORT("Enemy Projectile image %s not found!", g_cImageFileName[18]);
+  }
+
+  if (!g_pTitleSprite->Load(g_cImageFileName[22]))
+  {
+	  ABORT("Title image %s not found!", g_cImageFileName[22]);
+  }
+
+  if (!g_pPauseSprite->Load(g_cImageFileName[34]))
+  {
+	  ABORT("Pause Button image %s not found!", g_cImageFileName[34]);
+  }
+  if (!g_pPauseMenuSprite->Load(g_cImageFileName[11]))
+  {
+	  ABORT("Pause Menu image %s not found!", g_cImageFileName[11]);
+  }
+
+  if (!g_pBackground1->Load(g_cImageFileName[9]))
+  {
+	  ABORT("BG image %s not found!", g_cImageFileName[9]);
+  }
+  if (!g_pBackground2->Load(g_cImageFileName[10]))
+  {
+	  ABORT("BG image %s not found!", g_cImageFileName[10]);
+  }
+  if (!g_pBackground3->Load(g_cImageFileName[11]))
+  {
+	  ABORT("BG image %s not found!", g_cImageFileName[11]);
+  }
+
+
+
+  CreateObjects(); //create game objects
+  
+  // platform sprite stuff
+  if (!g_pPlatformSpriteW->Load(g_cImageFileName[3]))
+	  ABORT("Platform image %s not found.", g_cImageFileName[3]);
+  if (!g_pPlatformSpriteB->Load(g_cImageFileName[4]))
+	  ABORT("Platform image %s not found.", g_cImageFileName[4]);
+  if (!g_pPlatformSpriteBLW->Load(g_cImageFileName[5]))
+	  ABORT("Platform image %s not found.", g_cImageFileName[5]);
+  if (!g_pPlatformSpriteBRW->Load(g_cImageFileName[6]))
+	  ABORT("Platform image %s not found.", g_cImageFileName[6]);
+  if (!g_pPlatformSpriteWLB->Load(g_cImageFileName[7]))
+	  ABORT("Platform image %s not found.", g_cImageFileName[7]);
+  if (!g_pPlatformSpriteWRB->Load(g_cImageFileName[8]))
+	  ABORT("Platform image %s not found.", g_cImageFileName[8]);
+  LoadPlatforms();
+
+  //fonts
+  g_cFontManager = new CFont();
+  g_cFontManager->load(); //loads the fonts
+
+  //Coins
+  g_cCoinManager = new CCoinManager();
+  g_cCoinManager->init(10);
+  //Load Sound Manager
+  g_pSoundManager = new CSoundManager(); //load it to have one sound
+  g_pSoundManager->Load();
+
+  //message loop
+  while(TRUE)
+    if(PeekMessage(&msg, nullptr, 0, 0, PM_NOREMOVE)){ //if message waiting
+      if(!GetMessage(&msg, nullptr, 0, 0))return (int)msg.wParam; //get it
+      TranslateMessage(&msg); DispatchMessage(&msg); //translate it
+    } //if
+    else 
+      if(g_bActiveApp)
+        GameRenderer.ProcessFrame(); 
+      else WaitMessage();
+} //WinMain
